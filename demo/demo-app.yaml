@@ -1,0 +1,55 @@
+---
+# Deployment 1: uses the default label key (topology.kubernetes.io/zone).
+# The scheduler picks the node whose zone label comes first alphabetically.
+# With zones "alpha-1" vs "beta-2" vs "gamma-3", pods land on the "alpha-1" node.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-zone-default
+  namespace: default
+  labels:
+    app: demo-zone-default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: demo-zone-default
+  template:
+    metadata:
+      labels:
+        app: demo-zone-default
+    spec:
+      schedulerName: alphabetical-scheduler
+      containers:
+        - name: echo-server
+          image: registry.k8s.io/echoserver:1.10
+          imagePullPolicy: IfNotPresent
+      restartPolicy: Always
+---
+# Deployment 2: overrides the scoring label via scheduler.io/rank-by-label.
+# The scheduler scores nodes by their "team" label instead of zone.
+# With team labels "zebra" vs "alpha" vs "mike", pods land on the "alpha" node.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-team-override
+  namespace: default
+  labels:
+    app: demo-team-override
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: demo-team-override
+  template:
+    metadata:
+      labels:
+        app: demo-team-override
+        scheduler.io/rank-by-label: "team"
+    spec:
+      schedulerName: alphabetical-scheduler
+      containers:
+        - name: echo-server
+          image: registry.k8s.io/echoserver:1.10
+          imagePullPolicy: IfNotPresent
+      restartPolicy: Always

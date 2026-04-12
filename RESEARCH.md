@@ -72,7 +72,7 @@ Either cycle can be aborted. If aborted, the pod is returned to the scheduling q
 
 ### 2. Extension Points — Detailed Reference
 
-All extension point interfaces are defined in `k8s.io/kubernetes/pkg/scheduler/framework` (package path: `pkg/scheduler/framework`).
+All extension point interfaces are defined in `k8s.io/kubernetes/pkg/scheduler/framework` (package path: `pkg/scheduler/framework/interface.go`).
 
 #### 2.1 PreEnqueue
 

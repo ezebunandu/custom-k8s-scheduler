@@ -5,6 +5,7 @@ package e2e_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+)
+
+const (
+	dockerBuildTimeout   = 4 * time.Minute
+	kindImageLoadTimeout = 2 * time.Minute
+	kindKubeCfgTimeout   = 30 * time.Second
 )
 
 // projectRoot returns the absolute path to the repository root by walking up
@@ -33,22 +40,8 @@ func buildAndLoadSchedulerImage(t *testing.T, clusterName string) {
 
 	root := projectRoot()
 
-	// Build the Docker image (the Dockerfile runs go build -tags scheduler internally).
-	dockerBuild := exec.Command("docker", "build", "-t", "custom-scheduler:e2e", ".")
-	dockerBuild.Dir = root
-	dockerBuild.Stdout = os.Stdout
-	dockerBuild.Stderr = os.Stderr
-	if err := dockerBuild.Run(); err != nil {
-		t.Fatalf("docker build failed: %v", err)
-	}
-
-	// Load the image into the kind cluster.
-	kindLoad := exec.Command("kind", "load", "docker-image", "custom-scheduler:e2e", "--name", clusterName)
-	kindLoad.Stdout = os.Stdout
-	kindLoad.Stderr = os.Stderr
-	if err := kindLoad.Run(); err != nil {
-		t.Fatalf("kind load docker-image failed: %v", err)
-	}
+	runCommandWithTimeout(t, root, dockerBuildTimeout, "docker", "build", "-t", "custom-scheduler:e2e", ".")
+	runCommandWithTimeout(t, "", kindImageLoadTimeout, "kind", "load", "docker-image", "custom-scheduler:e2e", "--name", clusterName)
 }
 
 // getKubeClient retrieves the kubeconfig for the named kind cluster and returns
@@ -57,10 +50,16 @@ func getKubeClient(t *testing.T, clusterName string) *kubernetes.Clientset {
 	t.Helper()
 
 	var buf bytes.Buffer
-	cmd := exec.Command("kind", "get", "kubeconfig", "--name", clusterName)
+	ctx, cancel := context.WithTimeout(context.Background(), boundedTimeout(t, kindKubeCfgTimeout))
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "kind", "get", "kubeconfig", "--name", clusterName)
 	cmd.Stdout = &buf
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			t.Fatalf("kind get kubeconfig timed out after %s", boundedTimeout(t, kindKubeCfgTimeout))
+		}
 		t.Fatalf("kind get kubeconfig failed: %v", err)
 	}
 
@@ -124,4 +123,45 @@ func getWorkerNodes(t *testing.T, client *kubernetes.Clientset) []v1.Node {
 		}
 	}
 	return workers
+}
+
+func runCommandWithTimeout(t *testing.T, dir string, timeout time.Duration, command string, args ...string) {
+	t.Helper()
+
+	effectiveTimeout := boundedTimeout(t, timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), effectiveTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, command, args...)
+	cmd.Dir = dir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			t.Fatalf("%s timed out after %s (args: %v)", command, effectiveTimeout, args)
+		}
+		t.Fatalf("%s failed: %v (args: %v)", command, err, args)
+	}
+}
+
+func boundedTimeout(t *testing.T, want time.Duration) time.Duration {
+	t.Helper()
+	deadline, ok := t.Deadline()
+	if !ok {
+		return want
+	}
+
+	remaining := time.Until(deadline) - 5*time.Second
+	if remaining <= 0 {
+		return time.Second
+	}
+	return minDuration(want, remaining)
+}
+
+func minDuration(a, b time.Duration) time.Duration {
+	if a <= b {
+		return a
+	}
+	return b
 }
