@@ -62,7 +62,8 @@ demo/                   Demo deployments and walkthrough
 The [`demo/`](demo/README.md) directory contains a full walkthrough for running
 the scheduler on a local [kind](https://kind.sigs.k8s.io/) cluster with three
 worker nodes. It deploys two sets of test pods that demonstrate both the default
-scoring behavior and the label-override feature. See
+scoring behavior and the label-override feature — the two deployments end up on
+different nodes even though they use the same scheduler. See
 **[demo/README.md](demo/README.md)** for step-by-step instructions.
 
 ## Running tests
