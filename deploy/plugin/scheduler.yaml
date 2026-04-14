@@ -5,9 +5,51 @@ metadata:
   name: alphabetical-plugin-scheduler
   namespace: kube-system
 ---
-# The plugin scheduler runs the full kube-scheduler binary, so it needs the
-# same permissions as the default scheduler. Binding to system:kube-scheduler
-# (which already exists in every cluster) is the simplest way to achieve this.
+# The kube-scheduler binary starts informers for many resource types beyond what
+# system:kube-scheduler covers. This ClusterRole grants everything the binary's
+# shared informer factory expects to list/watch.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: alphabetical-plugin-scheduler
+rules:
+  # Core scheduling resources
+  - apiGroups: [""]
+    resources: ["pods", "pods/status", "pods/binding"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/status"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  # Informer-watched core resources
+  - apiGroups: [""]
+    resources: ["namespaces", "services", "replicationcontrollers",
+                "persistentvolumes", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  # Apps informers
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  # Policy informers
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+  # Storage informers
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "csinodes", "csistoragecapacities",
+                "csidrivers", "volumeattachments"]
+    verbs: ["get", "list", "watch"]
+  # Dynamic Resource Allocation informers (k8s 1.31+)
+  - apiGroups: ["resource.k8s.io"]
+    resources: ["resourceclaims", "resourceslices", "resourceclaimstatuses"]
+    verbs: ["get", "list", "watch"]
+  # Leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -15,19 +57,18 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: system:kube-scheduler
+  name: alphabetical-plugin-scheduler
 subjects:
   - kind: ServiceAccount
     name: alphabetical-plugin-scheduler
     namespace: kube-system
 ---
-# The kube-scheduler binary watches the extension-apiserver-authentication
-# ConfigMap in kube-system for client certificate auth. The default scheduler
-# gets this via a dedicated Role; we need our own.
+# Read the extension-apiserver-authentication ConfigMap in kube-system.
+# The default scheduler gets this via a separate Role; we need our own.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: alphabetical-plugin-scheduler-extension-apiserver-auth
+  name: alphabetical-plugin-scheduler-auth-reader
   namespace: kube-system
 rules:
   - apiGroups: [""]
@@ -38,25 +79,12 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: alphabetical-plugin-scheduler-extension-apiserver-auth
+  name: alphabetical-plugin-scheduler-auth-reader
   namespace: kube-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: alphabetical-plugin-scheduler-extension-apiserver-auth
-subjects:
-  - kind: ServiceAccount
-    name: alphabetical-plugin-scheduler
-    namespace: kube-system
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: alphabetical-plugin-scheduler-volume
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: system:volume-scheduler
+  name: alphabetical-plugin-scheduler-auth-reader
 subjects:
   - kind: ServiceAccount
     name: alphabetical-plugin-scheduler
@@ -73,6 +101,8 @@ data:
     kind: KubeSchedulerConfiguration
     leaderElection:
       leaderElect: false
+      resourceName: alphabetical-plugin-scheduler
+      resourceNamespace: kube-system
     profiles:
       - schedulerName: alphabetical-scheduler
         plugins:
