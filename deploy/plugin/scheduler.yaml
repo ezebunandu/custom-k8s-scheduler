@@ -20,7 +20,7 @@ rules:
   - apiGroups: [""]
     resources: ["nodes", "nodes/status"]
     verbs: ["get", "list", "watch", "update", "patch"]
-  - apiGroups: [""]
+  - apiGroups: ["", "events.k8s.io"]
     resources: ["events"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   # Informer-watched core resources
