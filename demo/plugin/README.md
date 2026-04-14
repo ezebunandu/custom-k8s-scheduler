@@ -57,8 +57,8 @@ kind load docker-image alphabetical-plugin-scheduler:latest --name plugin-schedu
 
 ## 3. Deploy the plugin scheduler
 
-The manifest creates a ServiceAccount, binds it to `system:kube-scheduler` and
-`system:volume-scheduler` roles, installs a ConfigMap with the
+The manifest creates a ServiceAccount with a custom ClusterRole covering all
+resource types the kube-scheduler binary watches, installs a ConfigMap with the
 `KubeSchedulerConfiguration`, and runs the scheduler as a Deployment:
 
 ```bash
@@ -107,15 +107,41 @@ kubectl get pods -o wide
 The results are identical to the polling demo — same scoring logic, different
 execution model.
 
-## 7. Check scheduler logs
+## 7. Check scheduling events
+
+Unlike the polling scheduler which logs a simple `scheduled X -> Y` line per pod,
+the plugin scheduler runs inside the real kube-scheduler binary. Its logs include
+informer sync messages for **all** cluster pods (the scheduler watches everything
+to track resource usage, affinity, and preemption candidates), so finding your
+plugin's scheduling decisions requires filtering.
+
+**Option A — filter the scheduler logs for scheduling actions:**
 
 ```bash
-kubectl -n kube-system logs -l app=alphabetical-plugin-scheduler --tail=50
+kubectl -n kube-system logs -l app=alphabetical-plugin-scheduler --tail=200 \
+  | grep -E "Attempting to schedule|Calculated.*score|Successfully bound"
 ```
 
-With the plugin approach you'll see standard kube-scheduler log output (leader
-election, informer sync, scheduling decisions) rather than the simple
-`scheduled X -> Y` lines from the polling binary.
+You should see lines like:
+
+```
+"Attempting to schedule pod" pod="default/plugin-demo-zone-default-..."
+"Calculated node's final score for pod" pod="..." node="..." plugin="AlphabeticalScore" score=100
+"Successfully bound pod to node" pod="..." node="..."
+```
+
+**Option B — check Kubernetes events:**
+
+The scheduler writes a `Scheduled` event for every pod it binds. Filter by
+`reportingController` to see only decisions made by our scheduler:
+
+```bash
+kubectl get events -A --field-selector reason=Scheduled \
+  -o custom-columns='NAMESPACE:.namespace,POD:.regarding.name,NODE:.note,SOURCE:.reportingController'
+```
+
+Rows with `SOURCE=alphabetical-scheduler` are ours; rows with
+`SOURCE=default-scheduler` belong to the built-in scheduler.
 
 ## Understanding the KubeSchedulerConfiguration
 
