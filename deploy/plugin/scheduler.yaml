@@ -21,6 +21,34 @@ subjects:
     name: alphabetical-plugin-scheduler
     namespace: kube-system
 ---
+# The kube-scheduler binary watches the extension-apiserver-authentication
+# ConfigMap in kube-system for client certificate auth. The default scheduler
+# gets this via a dedicated Role; we need our own.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: alphabetical-plugin-scheduler-extension-apiserver-auth
+  namespace: kube-system
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["extension-apiserver-authentication"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alphabetical-plugin-scheduler-extension-apiserver-auth
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: alphabetical-plugin-scheduler-extension-apiserver-auth
+subjects:
+  - kind: ServiceAccount
+    name: alphabetical-plugin-scheduler
+    namespace: kube-system
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
