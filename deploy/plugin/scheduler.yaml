@@ -1,0 +1,89 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alphabetical-plugin-scheduler
+  namespace: kube-system
+---
+# The plugin scheduler runs the full kube-scheduler binary, so it needs the
+# same permissions as the default scheduler. Binding to system:kube-scheduler
+# (which already exists in every cluster) is the simplest way to achieve this.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: alphabetical-plugin-scheduler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:kube-scheduler
+subjects:
+  - kind: ServiceAccount
+    name: alphabetical-plugin-scheduler
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: alphabetical-plugin-scheduler-volume
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:volume-scheduler
+subjects:
+  - kind: ServiceAccount
+    name: alphabetical-plugin-scheduler
+    namespace: kube-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alphabetical-plugin-scheduler-config
+  namespace: kube-system
+data:
+  scheduler-config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1
+    kind: KubeSchedulerConfiguration
+    leaderElection:
+      leaderElect: false
+    profiles:
+      - schedulerName: alphabetical-scheduler
+        plugins:
+          score:
+            enabled:
+              - name: AlphabeticalScore
+                weight: 1
+            disabled:
+              - name: "*"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alphabetical-plugin-scheduler
+  namespace: kube-system
+  labels:
+    app: alphabetical-plugin-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alphabetical-plugin-scheduler
+  template:
+    metadata:
+      labels:
+        app: alphabetical-plugin-scheduler
+    spec:
+      serviceAccountName: alphabetical-plugin-scheduler
+      containers:
+        - name: scheduler
+          image: alphabetical-plugin-scheduler:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config=/etc/scheduler/scheduler-config.yaml
+          volumeMounts:
+            - name: scheduler-config
+              mountPath: /etc/scheduler
+              readOnly: true
+      volumes:
+        - name: scheduler-config
+          configMap:
+            name: alphabetical-plugin-scheduler-config

@@ -48,23 +48,36 @@ Both implementations share the same scoring logic and label-override behavior.
 ## Project structure
 
 ```
-cmd/scheduler/          Entry point — runs the standalone polling scheduler
+cmd/
+  scheduler/            Entry point — runs the standalone polling scheduler
+  plugin-scheduler/     Entry point — runs kube-scheduler with AlphabeticalScore plugin
 pkg/
   schedulercore/        Standalone scheduler loop (list → score → bind)
   alphabeticalscore/    Scheduler framework ScorePlugin implementation
 test/e2e/               End-to-end tests using kind clusters
-deploy/                 Kubernetes manifests to run the scheduler in-cluster
-demo/                   Demo deployments and walkthrough
+deploy/
+  scheduler.yaml        Manifests for the polling scheduler
+  plugin/               Manifests for the plugin scheduler (ConfigMap + KubeSchedulerConfiguration)
+demo/
+  README.md             Polling scheduler demo walkthrough
+  plugin/               Plugin scheduler demo walkthrough
 ```
 
-## Running the demo
+## Running the demos
 
-The [`demo/`](demo/README.md) directory contains a full walkthrough for running
-the scheduler on a local [kind](https://kind.sigs.k8s.io/) cluster with three
-worker nodes. It deploys two sets of test pods that demonstrate both the default
-scoring behavior and the label-override feature — the two deployments end up on
-different nodes even though they use the same scheduler. See
-**[demo/README.md](demo/README.md)** for step-by-step instructions.
+There are two demos, one for each approach:
+
+- **Polling scheduler** — [`demo/README.md`](demo/README.md). Deploys the
+  standalone binary that polls for unscheduled pods and binds them directly.
+
+- **Plugin scheduler** — [`demo/plugin/README.md`](demo/plugin/README.md).
+  Deploys the `AlphabeticalScore` plugin inside the real kube-scheduler binary.
+  Kubernetes drives the full scheduling cycle; our plugin is called during the
+  Score phase.
+
+Both demos use a local [kind](https://kind.sigs.k8s.io/) cluster with three
+worker nodes and deploy the same test workloads. The scheduling results are
+identical — same scoring logic, different execution model.
 
 ## Running tests
 

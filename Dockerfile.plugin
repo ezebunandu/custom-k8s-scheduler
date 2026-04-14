@@ -1,0 +1,8 @@
+FROM golang:1.23 AS builder
+WORKDIR /app
+COPY . .
+RUN CGO_ENABLED=0 go build -o /plugin-scheduler ./cmd/plugin-scheduler
+
+FROM gcr.io/distroless/static:nonroot
+COPY --from=builder /plugin-scheduler /plugin-scheduler
+ENTRYPOINT ["/plugin-scheduler"]
