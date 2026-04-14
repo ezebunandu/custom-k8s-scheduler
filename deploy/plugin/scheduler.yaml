@@ -137,6 +137,7 @@ spec:
           imagePullPolicy: IfNotPresent
           args:
             - --config=/etc/scheduler/scheduler-config.yaml
+            - --v=3
           volumeMounts:
             - name: scheduler-config
               mountPath: /etc/scheduler
